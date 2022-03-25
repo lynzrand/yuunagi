@@ -60,6 +60,7 @@ class PackState():
                 path asc
             )
         """)
+        self.db.commit()
 
     _disp: live.Live
     _node_scan_prog: progress.Progress
@@ -160,13 +161,14 @@ class PackState():
                     hasher.update(self._shared_buf[0:rd])
                     self._file_size_prog.advance(curr_file, rd)
                     self._file_size_prog.advance(self._tid_whole_scan, rd)
-            self.db.execute(
-                "insert into pkg values(:hash, :path, :ty, :ix_time)", {
-                    "hash": hasher.digest(),
-                    "path": rel_path,
-                    "ty": TY_FILE,
-                    "ix_time": time()
-                })
+            with self.db:
+                self.db.execute(
+                    "insert into pkg values(:hash, :path, :ty, :ix_time)", {
+                        "hash": hasher.digest(),
+                        "path": rel_path,
+                        "ty": TY_FILE,
+                        "ix_time": time()
+                    })
             self._node_scan_prog.advance(self._tid_node_scan)
         finally:
             if curr_file is not None:
@@ -176,20 +178,23 @@ class PackState():
         for v in path.iterdir():
             self._add_path(rel, v)
         # insert after all contents are indexed
-        self.db.execute(
-            "insert into pkg values(:hash, :path, :ty, :ix_time)", {
-                "hash": None,
-                "path": path.relative_to(rel).as_posix(),
-                "ty": TY_DIR,
-                "ix_time": time()
-            })
+        with self.db:
+            self.db.execute(
+                "insert into pkg values(:hash, :path, :ty, :ix_time)", {
+                    "hash": None,
+                    "path": path.relative_to(rel).as_posix(),
+                    "ty": TY_DIR,
+                    "ix_time": time()
+                })
         self._node_scan_prog.advance(self._tid_node_scan)
 
     def flush(self):
-        self.db.execute("pragma wal_checkpoint(FULL)")
+        # self.db.execute("pragma wal_checkpoint(FULL)")
+        pass
 
     def close(self):
         self.flush()
+        self.db.commit()
         self.db.close()
 
     pass
@@ -211,7 +216,7 @@ def main():
     ns = ap.parse_args()
     ps = PackState(ns.database)
     for d in ns.source:
-        ps.add_path(Path(ns.relative_to), Path(d).absolute())
+        ps.add_path(Path(ns.relative_to).absolute(), Path(d).absolute())
     ps.close()
 
 
