@@ -107,7 +107,7 @@ class PackState():
                 table_column=table.Column(ratio=2),
             ),
             progress.BarColumn(None, table_column=table.Column(ratio=5)),
-            progress.MofNCompleteColumn(table_column=table.Column(ratio=3)),
+            progress.MofNCompleteColumn(table_column=table.Column(ratio=4)),
             expand=True,
         )
 
@@ -116,10 +116,11 @@ class PackState():
                 "{task.description}",
                 markup=False,
                 justify="right",
-                table_column=table.Column(ratio=2),
+                table_column=table.Column(ratio=2, no_wrap=True),
             ),
             progress.BarColumn(None, table_column=table.Column(ratio=5)),
-            progress.DownloadColumn(True, table_column=table.Column(ratio=1)),
+            progress.FileSizeColumn(table_column=table.Column(ratio=1)),
+            progress.TotalFileSizeColumn(table_column=table.Column(ratio=1)),
             progress.TimeElapsedColumn(table_column=table.Column(ratio=1)),
             progress.TimeRemainingColumn(table_column=table.Column(ratio=1)),
             expand=True,
@@ -300,7 +301,7 @@ def main():
     try:
         ps = PackState(ns.database)
         for d in ns.source:
-            ps.add_path(Path(ns.relative_to).absolute(), Path(d).absolute())
+            ps.add_path(Path(ns.relative_to).resolve(), Path(d).resolve())
 
         result_by_type = {
             x[1]: x[0]
