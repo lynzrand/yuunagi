@@ -295,7 +295,7 @@ def makeParser(a: argparse.ArgumentParser):
 
 
 def main():
-    ap = argparse.ArgumentParser("yuunagi-pack")
+    ap = argparse.ArgumentParser("yuunagi-index")
     makeParser(ap)
     ns = ap.parse_args()
     try:
