@@ -22,10 +22,10 @@ def main():
         help=
         """Source directories or files to add. All items are placed in the top 
         level of the created archive.""")
-    ap.add_argument("-e, --encrypt",
+    ap.add_argument("--encrypt",
                     action="store_true",
                     help="Encrypt the archive with AES-256-CBC.")
-    ap.add_argument("-d, --decrypt",
+    ap.add_argument("--decrypt",
                     action="store_true",
                     help="Decrypt the archive with AES-256-CBC.")
     ap.add_argument(
@@ -35,8 +35,7 @@ def main():
     )
     ap.add_argument(
         "--salt",
-        help=
-        """
+        help="""
         The salt to use for encryption or decryption. 
 
         If we are encrypting, the salt is generated randomly. If we are decrypting,
@@ -49,12 +48,17 @@ def main():
     digest_name = archive.with_name(archive.name + ".sha256")
     target_io = open(archive, "wb")
     if args.encrypt:
-        # read key from stdin
-        key = input("Enter encryption key: ").encode("utf-8")
+        key = args.key
+        if key is None:
+            key = input("Enter encryption key: ").encode("utf-8")
+        else:
+            key = key.encode("utf-8")
         # generate random salt
-        salt = os.urandom(16)
+        salt = args.salt
+        if salt is None:
+            salt = os.urandom(AES.block_size // 8 - len("Salted__"))
 
-        target_io = with_encryption(target_io, b"\x00" * 32)
+        target_io = with_encryption(target_io, key, salt)
     target_io = with_digest(target_io)
     digest = open(digest_name, "w")
 

@@ -1,3 +1,4 @@
+import binascii
 import hashlib
 from io import RawIOBase
 from typing import Optional
@@ -6,6 +7,7 @@ from cryptography.hazmat.primitives.ciphers.algorithms import AES
 from cryptography.hazmat.primitives.ciphers.base import Cipher, CipherContext
 from cryptography.hazmat.primitives.ciphers.modes import CBC
 from cryptography.hazmat.primitives.hashes import SHA256, Hash, HashContext
+from cryptography.hazmat.primitives.padding import PKCS7, PaddingContext
 
 
 class ProxiedIO(RawIOBase):
@@ -31,6 +33,13 @@ class ProxiedIO(RawIOBase):
     def get_digest(self):
         return self.digest
 
+    def close(self) -> None:
+        self.io.flush()
+        return self.io.close()
+
+    def __exit__(self):
+        self.close()
+
 
 class EncryptedWriteIO(ProxiedIO):
     """
@@ -53,22 +62,39 @@ class EncryptedWriteIO(ProxiedIO):
 
         super().__init__(proxied)
         self.enc = enc
+        self.salt = salt
+        self.padder = PKCS7(AES.block_size).padder()
 
+    padder: PaddingContext
     enc: CipherContext
     salt: bytes | None
     salt_written: bool = False
+    finalized: bool = False
 
     def write(self, buf) -> int | None:
-        if not self.salt_written:
+        if not self.salt_written and self.salt is not None:
             self.salt_written = True
-            super().write("Salted__")
+            super().write(b"Salted__")
             super().write(self.salt)
-        return super().write(buf)
+        padded = self.padder.update(buf)
+        encrypted = self.enc.update(padded)
+        return super().write(encrypted)
 
     def close(self) -> None:
+        if self.finalized:
+            return
+        self.finalized = True
+        remainder = self.padder.finalize()
+        remainder = self.enc.update(remainder)
+        super().write(remainder)
         remainder = self.enc.finalize()
-        self.write(remainder)
+        super().write(remainder)
+        self.io.flush()
         return super().close()
+
+    def __exit__(self):
+        self.close()
+        return super().__exit__()
 
 
 class EncryptedReadIO(ProxiedIO):
@@ -166,7 +192,7 @@ def with_encryption(target_io: RawIOBase, key: bytes,
     another IO instance.
     """
     cipher = gen_cipher(key, salt)
-    return EncryptedWriteIO(target_io, cipher.encryptor())
+    return EncryptedWriteIO(target_io, cipher.encryptor(), salt=salt)
 
 
 def with_decryption(target_io: RawIOBase, key: bytes,
@@ -187,6 +213,11 @@ def gen_cipher(key: bytes, salt: bytes) -> Cipher:
     enc_key_and_iv = hashlib.pbkdf2_hmac("sha256", key, salt, 10000, dklen=48)
     enc_key = enc_key_and_iv[:32]
     iv = enc_key_and_iv[32:]
+
+    # debug print hex of enc_key and iv
+    print("enc_key:", binascii.hexlify(enc_key).decode())
+    print("iv:", binascii.hexlify(iv).decode())
+
     cipher = Cipher(AES(enc_key), CBC(iv))
     return cipher
 
