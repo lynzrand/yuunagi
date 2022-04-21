@@ -37,12 +37,15 @@ console = rich.console.Console()
 class PackState():
     db: Db
 
-    def __init__(self, path: str) -> None:
+    def __init__(self, path: str | sqlite3.Connection) -> None:
         self._inode_cnt = 0
         self._file_size_cnt = 0
 
         console.log("Loading database")
-        self.db = sqlite3.connect(path)
+        if path is str:
+            self.db = sqlite3.connect(path)
+        else:
+            self.db = path
         with self.db:
             self.db.execute("pragma journal_mode = WAL")
             self.db.execute("""
