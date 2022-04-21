@@ -46,7 +46,8 @@ def main():
 
     archive = pathlib.Path(args.archive_file)
     digest_name = archive.with_name(archive.name + ".sha256")
-    target_io = open(archive, "wb")
+    file_io = open(archive, "wb")
+    target_io = file_io
     if args.encrypt:
         key = args.key
         if key is None:
@@ -62,7 +63,7 @@ def main():
     target_io = with_digest(target_io)
     digest = open(digest_name, "w")
 
-    with archive, digest:
+    with digest, target_io:
         create_archive(map(pathlib.Path, args.source), target_io,
                        lambda f, d: digest.write(f + " " + d + "\n"))
 
@@ -75,7 +76,7 @@ def create_archive(
     """
     Creates an archive of the following source, and write the digest into the given path.
     """
-    with tarfile.TarFile.xzopen(None, 'w', fileobj=target_io) as rf:
+    with tarfile.TarFile.gzopen(None, 'w', fileobj=target_io) as rf:
         for s in source:
             source_name = pathlib.Path(s.name)
             for f in s.rglob("*"):
@@ -86,7 +87,7 @@ def create_archive(
                         dd = hashlib.sha256()
                         while True:
                             buf = ff.read(1024 * 1024)
-                            if len(buf) == 0: break
+                            if buf is None or len(buf) == 0: break
                             dd.update(buf)
                         add_digest(f_path, dd.hexdigest())
                         print(f"{dd.hexdigest()} {f_path}")

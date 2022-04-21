@@ -30,14 +30,24 @@ class ProxiedIO(RawIOBase):
     def write(self, __buffer) -> Optional[int]:
         return self.io.write(__buffer)
 
-    def get_digest(self):
-        return self.digest
-
     def close(self) -> None:
-        self.io.flush()
+        if self.io.closed:
+            return
         return self.io.close()
 
-    def __exit__(self):
+    def flush(self) -> None:
+        return self.io.flush()
+
+    def tell(self) -> int:
+        return self.io.tell()
+
+    def seek(self, __offset: int, __whence: int = ...) -> int:
+        return self.io.seek(__offset, __whence)
+
+    def seekable(self) -> bool:
+        return self.io.seekable()
+
+    def __exit__(self, *args):
         self.close()
 
 
@@ -89,7 +99,7 @@ class EncryptedWriteIO(ProxiedIO):
         super().write(remainder)
         remainder = self.enc.finalize()
         super().write(remainder)
-        self.io.flush()
+        super().flush()
         return super().close()
 
     def __exit__(self):
