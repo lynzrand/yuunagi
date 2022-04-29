@@ -9,7 +9,7 @@ import pathlib
 import tarfile
 import argparse
 from typing import Callable, Iterable
-from encrypt_io import *
+from lib.IOProxy import *
 
 
 def main():
