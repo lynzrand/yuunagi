@@ -1,6 +1,8 @@
+from ast import Tuple
 import sqlite3
 import os
 from sys import prefix
+from typing import Iterator
 from unicodedata import category
 
 TY_FILE = 0
@@ -275,6 +277,37 @@ class IndexDatabase:
             else:
                 return PathGroup(row[0], row[1], row[2])
 
+    def iter_path_groups(self, category: str = None) -> Iterator[PathGroup]:
+
+        if category is None:
+            cursor = self.db.execute("""
+                select * from path_groups
+                """)
+        else:
+            cursor = self.db.execute(
+                """
+                select * from path_groups
+                where category = :category
+                """, {"category": category})
+        for row in cursor:
+            yield PathGroup(row[0], row[1], row[2])
+
+    def iter_path_group_sizes(self,
+                              category: str = None
+                              ) -> Iterator[Tuple[str, int]]:
+        sql = """
+            select prefix, sum(size) from 
+                path_groups left join paths on like(prefix+"%", paths.path)
+        """
+        if category is not None:
+            sql += " where category = :category"
+
+        sql += " group by prefix"
+
+        cursor = self.db.execute(sql, {"category": category})
+        for row in cursor:
+            yield row[0], row[1]
+
     def create_category(self, id: str, description: str):
         with self.db:
             self.db.execute(
@@ -314,6 +347,11 @@ class IndexDatabase:
                 })
             self.db.commit()
 
-    def clear_computed_data(self):
+    def delete_data_distribution(self, media_like: str):
         with self.db:
-            self.db.execute("delete from data_distribution")
+            self.db.execute(
+                """
+            delete from data_distribution
+            where like(target_media, :media_like)
+            """, {"media_like": media_like})
+            self.db.commit()
