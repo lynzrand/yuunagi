@@ -1,8 +1,7 @@
-from ast import Tuple
 import sqlite3
 import os
 from sys import prefix
-from typing import Iterator
+from typing import Iterator, Tuple
 from unicodedata import category
 
 TY_FILE = 0
@@ -30,10 +29,10 @@ class PathData:
     hash: bytes | None
     ty: int
     size: int
-    index_time: int
+    index_time: float
 
     def __init__(self, path: str, hash: bytes | None, ty: int, size: int,
-                 index_time: int):
+                 index_time: float):
         self.path = path
         self.size = size
         self.hash = hash
@@ -62,7 +61,7 @@ class IndexDatabase:
     db: sqlite3.Connection
 
     def __init__(self, path: str | os.PathLike | sqlite3.Connection):
-        if path is sqlite3.Connection:
+        if isinstance(path, sqlite3.Connection):
             self.db = path
             return
         else:
@@ -73,6 +72,12 @@ class IndexDatabase:
 
     def __del__(self):
         self.db.close()
+
+    def close(self):
+        self.db.close()
+
+    def execute(self, sql: str, params: dict = {}) -> sqlite3.Cursor:
+        return self.db.execute(sql, params)
 
     def create_schema(self):
         with self.db:
@@ -277,7 +282,8 @@ class IndexDatabase:
             else:
                 return PathGroup(row[0], row[1], row[2])
 
-    def iter_path_groups(self, category: str = None) -> Iterator[PathGroup]:
+    def iter_path_groups(self,
+                         category: str | None = None) -> Iterator[PathGroup]:
 
         if category is None:
             cursor = self.db.execute("""
@@ -293,7 +299,7 @@ class IndexDatabase:
             yield PathGroup(row[0], row[1], row[2])
 
     def iter_path_group_sizes(self,
-                              category: str = None
+                              category: str | None = None
                               ) -> Iterator[Tuple[str, int]]:
         sql = """
             select prefix, sum(size) from 

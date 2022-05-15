@@ -12,6 +12,8 @@ from sqlite3 import Connection as Db, connect
 import sqlite3
 from time import time
 
+from lib.Database import IndexDatabase, PathData
+
 TY_FILE = 0
 "Stored type value for files"
 
@@ -35,35 +37,14 @@ console = rich.console.Console()
 
 
 class PackState():
-    db: Db
+    db: IndexDatabase
 
-    def __init__(self, path: str | sqlite3.Connection) -> None:
+    def __init__(self, db: IndexDatabase) -> None:
         self._inode_cnt = 0
         self._file_size_cnt = 0
 
         console.log("Loading database")
-        if path is str:
-            self.db = sqlite3.connect(path)
-        else:
-            self.db = path
-        with self.db:
-            self.db.execute("pragma journal_mode = WAL")
-            self.db.execute("""
-                create table if not exists
-                pkg (
-                    path text,
-                    hash blob,
-                    ty int,
-                    ix_time real
-                )
-            """)
-            self.db.execute("""
-                create index if not exists
-                ix_pkg_hash
-                on pkg (
-                    hash asc
-                )
-            """)
+        self.db = db
 
     _disp: live.Live
     _node_scan_prog: progress.Progress
@@ -162,20 +143,14 @@ class PackState():
         curr_file = None
         try:
             rel_path = path.relative_to(rel).as_posix()
-            db_data = next(
-                self.db.execute(
-                    "select * from pkg where path = ?",
-                    (rel_path, ),
-                ),
-                None,
-            )
+            db_data = self.db.get_path_data(path.absolute().as_posix())
 
             stat = path.stat()
 
             rescan = True
             if db_data is not None:
-                last_index_time = db_data[3]
-                if db_data[1] is not None and stat.st_mtime <= last_index_time:
+                last_index_time = db_data.index_time
+                if db_data.hash is not None and stat.st_mtime <= last_index_time:
                     rescan = False
                     console.log(f"Skipping already scanned file {path}")
 
@@ -198,28 +173,9 @@ class PackState():
                     hasher.update(self._shared_buf[0:rd])
                     self._file_size_prog.advance(curr_file, rd)
                     self._file_size_prog.advance(self._tid_whole_scan, rd)
-            with self.db:
-                if db_data:
-                    self.db.execute(
-                        """
-                        update pkg set hash = :hash, ty = :ty, ix_time = :ix_time
-                        where path = :path
-                        """, {
-                            "hash": hasher.digest(),
-                            "path": rel_path,
-                            "ty": TY_FILE,
-                            "ix_time": time()
-                        })
-                else:
-                    self.db.execute(
-                        """
-                        insert into pkg values(:path, :hash, :ty, :ix_time)
-                        """, {
-                            "path": rel_path,
-                            "hash": hasher.digest(),
-                            "ty": TY_FILE,
-                            "ix_time": time()
-                        })
+                self.db.add_or_update_path(
+                    PathData(path.absolute().as_posix(), hasher.digest(),
+                             TY_FILE, stat.st_size, stat.st_mtime))
             self._node_scan_prog.advance(self._tid_node_scan)
         finally:
             if curr_file is not None:
@@ -227,17 +183,12 @@ class PackState():
 
     def _add_dir(self, rel: Path, path: Path):
         rel_path = path.relative_to(rel).as_posix()
-        db_data = next(
-            self.db.execute(
-                "select * from pkg where path = ?",
-                (rel_path, ),
-            ),
-            None,
-        )
+        db_data = self.db.get_path_data(path.absolute().as_posix())
         stat = path.stat()
+
         full_rescan = True
         if db_data is not None:
-            last_index_time = db_data[3]
+            last_index_time = db_data.index_time
             if stat.st_mtime < last_index_time:
                 full_rescan = False
                 console.log(f"Skipping already scanned folder {path}")
@@ -251,28 +202,10 @@ class PackState():
                 self._node_scan_prog.advance(self._tid_node_scan)
 
         # insert after all contents are indexed
-        with self.db:
-            if db_data:
-                self.db.execute(
-                    """
-                        update pkg set hash = :hash, ty = :ty, ix_time = :ix_time
-                        where path = :path
-                        """, {
-                        "hash": None,
-                        "path": rel_path,
-                        "ty": TY_DIR,
-                        "ix_time": time()
-                    })
-            else:
-                self.db.execute(
-                    """
-                    insert into pkg values(:path, :hash, :ty, :ix_time)
-                    """, {
-                        "hash": None,
-                        "path": rel_path,
-                        "ty": TY_DIR,
-                        "ix_time": time()
-                    })
+        self.db.add_or_update_path(
+            PathData(path.absolute().as_posix(), None, TY_DIR, stat.st_size,
+                     stat.st_mtime))
+
         self._node_scan_prog.advance(self._tid_node_scan)
 
     def flush(self):
@@ -281,7 +214,6 @@ class PackState():
 
     def close(self):
         self.flush()
-        self.db.commit()
         self.db.close()
 
     pass
@@ -301,8 +233,9 @@ def main():
     ap = argparse.ArgumentParser("yuunagi-index")
     makeParser(ap)
     ns = ap.parse_args()
+    ps = None
     try:
-        ps = PackState(ns.database)
+        ps = PackState(IndexDatabase(ns.database))
         for d in ns.source:
             ps.add_path(Path(ns.relative_to).resolve(), Path(d).resolve())
 
@@ -322,7 +255,7 @@ def main():
             "Progress interrupted. Restart with the same arguments to resume.")
         pass
     finally:
-        ps.close()
+        if ps: ps.close()
 
 
 if __name__ == "__main__": main()
