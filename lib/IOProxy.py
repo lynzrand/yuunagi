@@ -17,7 +17,7 @@ This library also contains these classes:
 import binascii
 import hashlib
 from io import RawIOBase
-from typing import Optional
+from typing import IO, Optional
 
 from cryptography.hazmat.primitives.ciphers.algorithms import AES
 from cryptography.hazmat.primitives.ciphers.base import Cipher, CipherContext
@@ -26,16 +26,16 @@ from cryptography.hazmat.primitives.hashes import SHA256, Hash, HashContext
 from cryptography.hazmat.primitives.padding import PKCS7, PaddingContext
 
 
-class ProxiedIO(RawIOBase):
+class ProxiedIO(RawIOBase, IO[bytes]):
     """
     A IO instance that proxies the request into another IO instance.
     """
 
-    def __init__(self, proxied: RawIOBase) -> None:
+    def __init__(self, proxied: IO[bytes]) -> None:
         super().__init__()
         self.io = proxied
 
-    io: RawIOBase
+    io: IO[bytes]
 
     def readable(self) -> bool:
         return self.io.readable()
@@ -75,7 +75,7 @@ class EncryptedWriteIO(ProxiedIO):
 
     def __init__(
         self,
-        proxied: RawIOBase,
+        proxied: IO[bytes],
         enc: CipherContext,
         salt: bytes | None = None,
     ) -> None:
@@ -130,7 +130,7 @@ class EncryptedReadIO(ProxiedIO):
 
     def __init__(
         self,
-        proxied: RawIOBase,
+        proxied: IO[bytes],
         decrypt: CipherContext | None = None,
         key: bytes | None = None,
         salt: bytes | None = None,
@@ -197,7 +197,7 @@ class DigestingWriteOnlyBytesIO(ProxiedIO):
     into another IO instance.
     """
 
-    def __init__(self, proxied: RawIOBase, digest: HashContext) -> None:
+    def __init__(self, proxied: IO[bytes], digest: HashContext) -> None:
         super().__init__(proxied)
         self.digest = digest
 
@@ -211,7 +211,7 @@ class DigestingWriteOnlyBytesIO(ProxiedIO):
         return self.digest
 
 
-def with_encryption(target_io: RawIOBase, key: bytes,
+def with_encryption(target_io: IO[bytes], key: bytes,
                     salt: bytes) -> EncryptedWriteIO:
     """
     Returns an IO instance that encrypts the written bytes and then writes them into
@@ -221,7 +221,7 @@ def with_encryption(target_io: RawIOBase, key: bytes,
     return EncryptedWriteIO(target_io, cipher.encryptor(), salt=salt)
 
 
-def with_decryption(target_io: RawIOBase, key: bytes,
+def with_decryption(target_io: IO[bytes], key: bytes,
                     salt: bytes) -> EncryptedReadIO:
     """
     Returns an IO instance that decrypts the read bytes from another IO instance.
@@ -248,7 +248,7 @@ def gen_cipher(key: bytes, salt: bytes) -> Cipher:
     return cipher
 
 
-def with_digest(target_io: RawIOBase) -> DigestingWriteOnlyBytesIO:
+def with_digest(target_io: IO[bytes]) -> DigestingWriteOnlyBytesIO:
     """
     Returns an IO instance that digests all bytes written to it and then proxies them 
     into another IO instance.

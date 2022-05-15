@@ -8,7 +8,7 @@ import os
 import pathlib
 import tarfile
 import argparse
-from typing import Callable, Iterable
+from typing import Any, Callable, Iterable
 from lib.IOProxy import *
 
 
@@ -70,8 +70,8 @@ def main():
 
 def create_archive(
     source: Iterable[pathlib.Path],
-    target_io: BytesIO,
-    add_digest: Callable[[str, str], None],
+    target_io: RawIOBase,
+    add_digest: Callable[[str, str], Any],
 ):
     """
     Creates an archive of the following source, and write the digest into the given path.

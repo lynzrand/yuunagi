@@ -1,7 +1,7 @@
 import sqlite3
 import os
 from sys import prefix
-from typing import Iterator, Tuple
+from typing import Iterator, List, Tuple
 from unicodedata import category
 
 TY_FILE = 0
@@ -352,6 +352,15 @@ class IndexDatabase:
                     "target_media": target_media
                 })
             self.db.commit()
+
+    def get_media_paths(self, target_media: str) -> List[str]:
+        with self.db:
+            cursor = self.db.execute(
+                """
+            select path_group from data_distribution
+            where target_media = :target_media
+            """, {"target_media": target_media})
+            return [row[0] for row in cursor]
 
     def delete_data_distribution(self, media_like: str):
         with self.db:
